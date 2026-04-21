@@ -1,0 +1,54 @@
+# ─── Cowrie Honeypot ──────────────────────────────────────────────────────────
+
+# Logs reales del honeypot (no commitear — solo sample-data/)
+cowrie-var/log/
+cowrie_ataques.json
+*.json
+!sample-data/
+!sample-data/*.json
+
+# Archivos temporales del analizador
+temp_cowrie.json
+/tmp/
+reporte_honeypot_*.txt
+
+# ─── Python ───────────────────────────────────────────────────────────────────
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+.Python
+env/
+venv/
+.venv/
+*.egg-info/
+dist/
+build/
+.eggs/
+
+# ─── Entorno ──────────────────────────────────────────────────────────────────
+.env
+.env.local
+.env.*.local
+*.env
+
+# ─── Editores ─────────────────────────────────────────────────────────────────
+.vscode/settings.json
+.idea/
+*.swp
+*.swo
+*~
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# ─── OS ───────────────────────────────────────────────────────────────────────
+.DS_Store
+.AppleDouble
+.LSOverride
+ehthumbs.db
+Thumbs.db
+
+# ─── Docker ───────────────────────────────────────────────────────────────────
+# No ignorar docker-compose.yml (es parte del proyecto)
+# Volúmenes Docker locales con datos reales ya cubiertos por cowrie-var/log/

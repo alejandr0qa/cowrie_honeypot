@@ -1,0 +1,56 @@
+version: '3.8'
+
+services:
+  cowrie:
+    image: cowrie/cowrie:latest
+    container_name: cowrie_honeypot
+    restart: unless-stopped
+    ports:
+      - "2222:2222"   # SSH honeypot
+      - "2223:2223"   # Telnet honeypot (opcional)
+    volumes:
+      - ./cowrie-etc:/cowrie/cowrie-git/etc/cowrie.cfg.d   # Config custom
+      - ./cowrie-var:/cowrie/cowrie-git/var                 # Logs y datos accesibles desde el host
+    networks:
+      - cowrie_net
+    environment:
+      - COWRIE_HOSTNAME=srv-prod-01   # Nombre falso del servidor
+    healthcheck:
+      test: ["CMD", "pgrep", "-f", "cowrie"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 15s
+    labels:
+      - "project=cowrie_honeypot"
+      - "maintainer=security-team"
+
+  # Dashboard & API (opcional, se puede correr manualmente también)
+  dashboard:
+    image: python:3.11-slim
+    container_name: cowrie_dashboard
+    restart: unless-stopped
+    ports:
+      - "8000:8000"   # Dashboard web
+    volumes:
+      - ./api:/app/api
+      - ./dashboard:/app/dashboard
+      - ./cowrie-var:/app/cowrie-var:ro   # Solo lectura de logs
+    working_dir: /app
+    command: >
+      sh -c "pip install -q fastapi uvicorn httpx python-dotenv &&
+             uvicorn api.server:app --host 0.0.0.0 --port 8000 --reload"
+    networks:
+      - cowrie_net
+    depends_on:
+      - cowrie
+    environment:
+      - OLLAMA_ENDPOINT=http://host.docker.internal:11434/api/generate
+      - COWRIE_LOG_PATH=/app/cowrie-var/log/cowrie/cowrie.json
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+
+networks:
+  cowrie_net:
+    driver: bridge
+    name: cowrie_network

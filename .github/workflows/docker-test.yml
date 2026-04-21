@@ -1,0 +1,68 @@
+name: Validate Docker Compose
+
+on:
+  push:
+    branches: [ main, master ]
+  pull_request:
+    branches: [ main, master ]
+
+jobs:
+  validate-compose:
+    name: Validate docker-compose.yml
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Validate docker compose config
+        run: docker compose config > /dev/null && echo "✅ docker-compose.yml is valid"
+
+      - name: Check required files exist
+        run: |
+          files=(
+            "docker-compose.yml"
+            "api/server.py"
+            "api/requirements.txt"
+            "dashboard/index.html"
+            "dashboard/style.css"
+            "dashboard/app.js"
+            "sample-data/cowrie_sample.json"
+            "README.md"
+          )
+          for f in "${files[@]}"; do
+            if [ -f "$f" ]; then
+              echo "✅ $f"
+            else
+              echo "❌ Missing: $f" && exit 1
+            fi
+          done
+
+      - name: Validate sample data JSON
+        run: |
+          while IFS= read -r line; do
+            [ -z "$line" ] && continue
+            echo "$line" | python3 -c "import json,sys; json.load(sys.stdin)" || {
+              echo "❌ Invalid JSON line in sample-data/cowrie_sample.json"
+              exit 1
+            }
+          done < sample-data/cowrie_sample.json
+          echo "✅ sample-data/cowrie_sample.json is valid JSONL"
+
+      - name: Check for sensitive data in sample-data
+        run: |
+          # Verificar que no haya IPs privadas reales en sample-data
+          if grep -E '"src_ip":"(192\.168|10\.|172\.(1[6-9]|2[0-9]|3[01]))\.' sample-data/cowrie_sample.json; then
+            echo "⚠ Warning: Private IPs found in sample data (may be intentional)"
+          else
+            echo "✅ No private IPs detected in sample data"
+          fi
+
+  python-syntax:
+    name: Python Syntax Check
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Check Python syntax
+        run: python3 -m py_compile api/server.py && echo "✅ api/server.py syntax OK"
