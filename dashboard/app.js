@@ -509,13 +509,12 @@ function renderIPHistory(d) {
 // ─── AI Analysis (con RAG toggle) ─────────────────────────────────────────────
 async function runAnalysis() {
   el.analyzeBtn.disabled = true;
-  const useRag  = el.useRagToggle ? el.useRagToggle.checked : true;
-  const model   = el.aiModelSel.value;
-  const ragNote = useRag ? ' + <span class="rag-badge">🗄 RAG</span>' : '';
+  const useRag = el.useRagToggle ? el.useRagToggle.checked : true;
+  const model  = el.aiModelSel.value;
 
   el.aiOutput.innerHTML = `<div class="ai-loading">
     <div class="loading-spinner"></div>
-    <span>Analizando con ${escHtml(model)}${useRag ? " + memoria histórica" : ""}…</span>
+    <span>Pre-analizando + consultando ${escHtml(model)}${useRag ? " + RAG" : ""}…</span>
   </div>`;
 
   try {
@@ -528,11 +527,39 @@ async function runAnalysis() {
     const data = await res.json();
     if (!res.ok) throw new Error(data.detail || `HTTP ${res.status}`);
 
-    const text      = data.analysis || "(Sin respuesta)";
-    const evts      = data.events_analyzed || 0;
-    const ragUsed   = data.rag_context_used;
+    const text       = data.analysis || "(Sin respuesta)";
+    const evts       = data.events_analyzed || 0;
+    const ragUsed    = data.rag_context_used;
     const ragIndexed = data.rag_indexed ?? 0;
-    const src       = data.source === "sample_data" ? "📦 Demo" : "⚡ Live";
+    const src        = data.source === "sample_data" ? "📦 Demo" : "⚡ Live";
+    const pre        = data.pre_analysis || {};
+
+    // ─── Bloque de pre-análisis MITRE + estadísticas ────────────────────
+    const mitre       = pre.mitre_detected || [];
+    const credType    = pre.credential_type || "";
+    const timing      = pre.timing || {};
+    const successCount = pre.success_logins ?? 0;
+
+    const mitrePills = mitre.map(t =>
+      `<a href="https://attack.mitre.org/techniques/${t.id.replace('.','/')}" 
+          target="_blank" rel="noopener" class="mitre-pill" title="${escHtml(t.name)}">
+         ${escHtml(t.id)}
+       </a>`
+    ).join(" ");
+
+    const preBlock = (mitre.length > 0 || credType || timing.classification) ? `
+    <div class="ai-pre-analysis">
+      <div class="pre-analysis-title">
+        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2L2 7l10 5 10-5-10-5z"/><path d="M2 17l10 5 10-5"/><path d="M2 12l10 5 10-5"/></svg>
+        Pre-análisis automático
+      </div>
+      <div class="pre-analysis-body">
+        ${timing.classification ? `<div class="pre-stat"><span class="pre-stat-label">Timing</span><span class="pre-stat-val">${escHtml(timing.classification)}</span></div>` : ""}
+        ${credType ? `<div class="pre-stat"><span class="pre-stat-label">Credenciales</span><span class="pre-stat-val">${escHtml(credType)}</span></div>` : ""}
+        ${successCount > 0 ? `<div class="pre-stat"><span class="pre-stat-label pre-stat-label--red">Logins OK</span><span class="pre-stat-val pre-stat-val--red">⚠ ${successCount} exitosos</span></div>` : ""}
+        ${mitre.length > 0 ? `<div class="pre-stat pre-stat--full"><span class="pre-stat-label">MITRE ATT&CK detectado (${mitre.length})</span><div class="mitre-pills">${mitrePills}</div></div>` : ""}
+      </div>
+    </div>` : "";
 
     el.aiOutput.innerHTML = `
       <div class="ai-result">
@@ -540,9 +567,12 @@ async function runAnalysis() {
           <span>🤖 ${escHtml(model)}</span>
           <span>📋 ${evts} eventos</span>
           <span>${src}</span>
-          ${ragUsed ? `<span class="rag-badge">🗄 RAG (${ragIndexed} indexados)</span>` : '<span style="color:var(--text-muted);font-size:0.72rem">RAG off</span>'}
+          ${ragUsed
+            ? `<span class="rag-badge">🗄 RAG (${ragIndexed} indexados)</span>`
+            : `<span style="color:var(--text-muted);font-size:0.72rem">RAG off</span>`}
         </div>
-        <pre style="white-space:pre-wrap;font-family:inherit;line-height:1.75;">${escHtml(text)}</pre>
+        ${preBlock}
+        <pre style="white-space:pre-wrap;font-family:inherit;line-height:1.75;margin-top:14px;">${escHtml(text)}</pre>
       </div>`;
   } catch (err) {
     const msg = err.name === "TimeoutError" || err.message.includes("504")

@@ -575,6 +575,96 @@ body {
   line-height: 1.5;
 }
 
+/* ─── Pre-Analysis Block ──────────────────────────────────────────────────── */
+.ai-pre-analysis {
+  background: rgba(6,182,212,0.04);
+  border: 1px solid rgba(6,182,212,0.15);
+  border-radius: 10px;
+  overflow: hidden;
+  margin-bottom: 2px;
+}
+
+.pre-analysis-title {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 0.7rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  color: var(--cyan);
+  padding: 8px 14px;
+  background: rgba(6,182,212,0.07);
+  border-bottom: 1px solid rgba(6,182,212,0.12);
+}
+
+.pre-analysis-body {
+  padding: 10px 14px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.pre-stat {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.pre-stat--full {
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 6px;
+}
+
+.pre-stat-label {
+  font-size: 0.68rem;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  color: var(--text-muted);
+  font-weight: 600;
+  white-space: nowrap;
+  min-width: 90px;
+}
+
+.pre-stat-label--red { color: var(--red); }
+
+.pre-stat-val {
+  font-size: 0.78rem;
+  color: var(--text-secondary);
+}
+
+.pre-stat-val--red { color: var(--red); font-weight: 600; }
+
+/* MITRE ATT&CK Pills */
+.mitre-pills {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 5px;
+}
+
+.mitre-pill {
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 0.68rem;
+  font-weight: 600;
+  padding: 2px 8px;
+  border-radius: 5px;
+  background: rgba(249,115,22,0.08);
+  border: 1px solid rgba(249,115,22,0.25);
+  color: var(--orange);
+  text-decoration: none;
+  transition: all var(--t-fast);
+  white-space: nowrap;
+}
+
+.mitre-pill:hover {
+  background: rgba(249,115,22,0.18);
+  border-color: rgba(249,115,22,0.5);
+  color: #fff;
+  box-shadow: 0 0 10px rgba(249,115,22,0.25);
+}
+
 /* ─── Loading Spinner ────────────────────────────────────────────────────────── */
 .loading-spinner {
   width: 22px;

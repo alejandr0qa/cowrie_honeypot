@@ -1,12 +1,15 @@
 """
 ==============================================================================
-Cowrie Honeypot Dashboard — API Server v2.1
+Cowrie Honeypot Dashboard — API Server v2.2
 Cambios en esta versión:
   - Integración RAG (ChromaDB) para memoria histórica de ataques
+  - Prompt Engineering avanzado (chain-of-thought + few-shot + MITRE ATT&CK)
+  - Pre-análisis automático: timing, credenciales, técnicas MITRE detectadas
   - Nuevo endpoint GET  /api/rag/stats
   - Nuevo endpoint POST /api/rag/index  (indexación manual)
   - Nuevo endpoint GET  /api/history/{ip}
-  - /api/analyze enriquecido con contexto histórico de las IPs atacantes
+  - Nuevo endpoint GET  /api/search (búsqueda semántica)
+  - /api/analyze enriquecido con contexto RAG + prompt estructurado
 ==============================================================================
 """
 
@@ -29,9 +32,10 @@ from fastapi.responses import FileResponse
 from pydantic import BaseModel
 from dotenv import load_dotenv
 
-# ─── Importar RAG (mismo directorio) ─────────────────────────────────────────
+# ─── Importar módulos locales ────────────────────────────────────────────────
 sys.path.insert(0, os.path.dirname(__file__))
-from rag import CowrieRAG  # noqa: E402
+from rag    import CowrieRAG                            # noqa: E402
+from prompt import pre_analyze, build_prompt            # noqa: E402
 
 load_dotenv()
 logging.basicConfig(level=logging.INFO, format="%(levelname)s │ %(name)s │ %(message)s")
@@ -77,9 +81,10 @@ app = FastAPI(
     title="Cowrie Honeypot Dashboard API",
     description=(
         "API para visualizar y analizar eventos del honeypot Cowrie. "
-        "Incluye análisis con IA local (Ollama) y memoria histórica de ataques (RAG + ChromaDB)."
+        "Incluye análisis con IA local (Ollama), memoria histórica RAG (ChromaDB) "
+        "y prompt engineering avanzado con MITRE ATT&CK."
     ),
-    version="2.1.0",
+    version="2.2.0",
     lifespan=lifespan,
 )
 
@@ -234,19 +239,22 @@ def get_stats():
     }
 
 
-@app.post("/api/analyze", summary="Análisis de IA con contexto histórico RAG")
+@app.post("/api/analyze", summary="Análisis de IA con prompt avanzado + RAG + MITRE ATT&CK")
 async def analyze_with_ai(req: AnalyzeRequest):
     """
-    Envía eventos críticos a Ollama para análisis de inteligencia de amenazas.
-    Si RAG está disponible y `use_rag=True`, el prompt incluye automáticamente
-    el historial de las IPs atacantes para un análisis más preciso.
+    Análisis completo de threat intelligence:
+    1. Pre-análisis automático (timing, credenciales, MITRE auto-detect)
+    2. Contexto histórico RAG inyectado en el prompt
+    3. Prompt chain-of-thought con few-shot example + 6 secciones estructuradas
+    4. Mapeo MITRE ATT&CK automático (20+ técnicas para SSH honeypot)
     """
     events = _load_logs()
 
     critical = [
         e for e in events
         if e.get("eventid") in (
-            "cowrie.login.success", "cowrie.command.input", "cowrie.login.failed"
+            "cowrie.login.success", "cowrie.command.input", "cowrie.login.failed",
+            "cowrie.session.connect",
         )
     ]
     critical = critical[: (req.max_events or 50)]
@@ -254,7 +262,15 @@ async def analyze_with_ai(req: AnalyzeRequest):
     if not critical:
         raise HTTPException(status_code=404, detail="Sin eventos críticos para analizar")
 
-    # Formatear eventos para el prompt
+    # ─── Pre-análisis estadístico ──────────────────────────────────────────────
+    pre = pre_analyze(critical)
+    logger.info(
+        f"Pre-análisis: {len(pre['mitre'])} técnicas MITRE, "
+        f"{pre['credentials'].get('total_attempts',0)} credenciales, "
+        f"timing={pre['timing'].get('avg_interval_s')}s"
+    )
+
+    # ─── Formatear eventos para el prompt ─────────────────────────────────────
     lines = []
     for e in critical:
         eid = e.get("eventid", "")
@@ -266,8 +282,10 @@ async def analyze_with_ai(req: AnalyzeRequest):
             lines.append(f"[{ts}] LOGIN FALLIDO | IP: {ip} | {e.get('username')}/{e.get('password')}")
         elif eid == "cowrie.command.input":
             lines.append(f"[{ts}] COMANDO       | IP: {ip} | {e.get('input')}")
+        elif eid == "cowrie.session.connect":
+            lines.append(f"[{ts}] CONEXION SSH  | IP: {ip} | :{e.get('src_port','?')}")
 
-    report_data = "\n".join(lines)
+    events_text = "\n".join(lines)
 
     # ─── Contexto RAG ─────────────────────────────────────────────────────────
     rag_context  = ""
@@ -279,39 +297,19 @@ async def analyze_with_ai(req: AnalyzeRequest):
             rag_was_used = True
             logger.info("RAG: contexto histórico incluido en el prompt.")
 
-    # ─── Construir prompt ─────────────────────────────────────────────────────
-    rag_section = f"\n{rag_context}\n" if rag_context else ""
-
-    # Prompt chain-of-thought + few-shot inspirado en h4cker/prompt_engineering.md
-    prompt = f"""Eres un analista experto en ciberseguridad (Nivel SOC-3). Tu análisis SIEMPRE sigue estos pasos:
-
-Paso 1 — CLASIFICACIÓN: ¿Ataque automatizado (bot) o manual (humano)?
-  Pista: bots → timing regular (<2s entre intentos), credenciales de diccionario.
-  Humanos → timing irregular, comandos de reconocimiento sofisticados.
-
-Paso 2 — CREDENCIALES: ¿Qué usuario/contraseña probaron? ¿Es ataque de diccionario o dirigido?
-
-Paso 3 — COMANDOS e INTENCIÓN: ¿Qué intentaron hacer después de entrar?
-  Mapeo MITRE ATT&CK: ¿T1110 (Brute Force)? ¿T1059 (Command Execution)? ¿T1496 (Resource Hijacking)?
-
-Paso 4 — INDICADORES DE COMPROMISO (IoC): Lista de IPs y patrones sospechosos.
-
-Paso 5 — NIVEL DE RIESGO: CRÍTICO / ALTO / MEDIO / BAJO con justificación de 1 línea.
-
-Paso 6 — RECOMENDACIONES: Máximo 3 acciones concretas e inmediatas.
-{rag_section}
-REGLA ESTRICTA: Responde ÚNICAMENTE en español. Sé conciso y profesional.
-
-REGISTROS DEL HONEYPOT:
-{report_data}
-"""
+    # ─── Construir prompt con técnicas avanzadas ───────────────────────────────
+    prompt = build_prompt(
+        events_text=events_text,
+        pre_analysis=pre,
+        rag_context=rag_context,
+    )
 
     model   = req.model or OLLAMA_MODEL
     payload = {
         "model":   model,
         "prompt":  prompt,
         "stream":  False,
-        "options": {"temperature": 0.2, "num_predict": 900},
+        "options": {"temperature": 0.15, "num_predict": 1200},
     }
 
     try:
@@ -320,13 +318,28 @@ REGISTROS DEL HONEYPOT:
             response.raise_for_status()
             data = response.json()
 
+            # Preparar resumen del pre-análisis para el frontend
+            mitre_summary = [
+                {"id": t["id"], "name": t["name"]}
+                for t in pre["mitre"]
+            ]
+
             return {
-                "model":           model,
-                "analysis":        data.get("response", ""),
-                "events_analyzed": len(critical),
-                "source":          "sample_data" if _is_using_sample() else "live",
+                "model":            model,
+                "analysis":         data.get("response", ""),
+                "events_analyzed":  len(critical),
+                "source":           "sample_data" if _is_using_sample() else "live",
                 "rag_context_used": rag_was_used,
-                "rag_indexed":     rag.indexed_count,
+                "rag_indexed":      rag.indexed_count,
+                # Pre-análisis que el frontend puede usar
+                "pre_analysis": {
+                    "timing":         pre["timing"],
+                    "credential_type": pre["credentials"].get("type", ""),
+                    "mitre_detected": mitre_summary,
+                    "success_logins": len(pre["success_logins"]),
+                    "commands_count": len(pre["commands"]),
+                    "unique_ips":     len(pre["unique_ips"]),
+                },
             }
 
     except httpx.ConnectError:
