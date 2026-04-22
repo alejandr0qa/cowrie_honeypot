@@ -2,3 +2,6 @@ fastapi==0.111.0
 uvicorn[standard]==0.29.0
 httpx==0.27.0
 python-dotenv==1.0.1
+# ─── RAG / Memoria histórica ──────────────────────────────────────────────────
+# ChromaDB incluye el modelo all-MiniLM-L6-v2 via ONNX (sin GPU requerida)
+chromadb>=0.4.0

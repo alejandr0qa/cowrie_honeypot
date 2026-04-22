@@ -116,6 +116,18 @@
           <span class="stat-value stat-value--yellow" id="val-failed">—</span>
         </div>
       </div>
+
+      <!-- RAG Memory Card -->
+      <div class="stat-card stat-card--rag" id="stat-rag" title="Eventos indexados en la memoria histórica RAG (ChromaDB)">
+        <div class="stat-icon stat-icon--cyan">
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><ellipse cx="12" cy="5" rx="9" ry="3"/><path d="M21 12c0 1.66-4 3-9 3s-9-1.34-9-3"/><path d="M3 5v14c0 1.66 4 3 9 3s9-1.34 9-3V5"/></svg>
+        </div>
+        <div class="stat-body">
+          <span class="stat-label">Memoria RAG</span>
+          <span class="stat-value stat-value--cyan" id="val-rag">—</span>
+          <span class="stat-sublabel" id="rag-status-label">inicializando...</span>
+        </div>
+      </div>
     </section>
 
     <!-- ─── Charts Row ──────────────────────────────────────────────────── -->
@@ -188,6 +200,13 @@
               <option value="mistral">Mistral</option>
               <option value="gemma">Gemma</option>
             </select>
+            <label class="rag-toggle" title="Incluir memoria histórica RAG en el análisis">
+              <input type="checkbox" id="use-rag-toggle" checked />
+              <span class="rag-toggle-label">
+                <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><ellipse cx="12" cy="5" rx="9" ry="3"/><path d="M21 12c0 1.66-4 3-9 3s-9-1.34-9-3"/><path d="M3 5v14c0 1.66 4 3 9 3s9-1.34 9-3V5"/></svg>
+                RAG
+              </span>
+            </label>
             <button id="analyze-btn" class="btn btn-primary">
               <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="5 3 19 12 5 21 5 3"/></svg>
               Analizar con IA
@@ -230,7 +249,7 @@
           <thead>
             <tr>
               <th>Timestamp</th>
-              <th>IP Origen</th>
+              <th>IP Origen <span class="th-hint">clic → historial</span></th>
               <th>Tipo de Evento</th>
               <th>Detalle</th>
               <th>Sesión</th>
@@ -250,13 +269,36 @@
 
   </main>
 
+  <!-- ═══ IP HISTORY DRAWER ══════════════════════════════════════════════════ -->
+  <div id="ip-drawer-overlay" class="drawer-overlay" onclick="closeIPDrawer()"></div>
+  <aside id="ip-drawer" class="ip-drawer" role="dialog" aria-label="Historial de IP" aria-modal="true">
+    <div class="drawer-header">
+      <div class="drawer-title-group">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><line x1="2" y1="12" x2="22" y2="12"/><path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"/></svg>
+        <h2 class="drawer-title" id="drawer-ip-title">—</h2>
+      </div>
+      <button class="drawer-close" id="drawer-close-btn" onclick="closeIPDrawer()" aria-label="Cerrar">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+      </button>
+    </div>
+
+    <div id="drawer-content" class="drawer-content">
+      <div class="drawer-loading">
+        <div class="loading-spinner"></div>
+        <span>Consultando memoria RAG...</span>
+      </div>
+    </div>
+  </aside>
+
   <!-- ═══ FOOTER ══════════════════════════════════════════════════════════════ -->
   <footer class="footer">
-    <span>Cowrie Honeypot Dashboard v2.0</span>
+    <span>Cowrie Honeypot Dashboard v2.1 + RAG</span>
     <span class="footer-sep">•</span>
     <span id="footer-timestamp">Última actualización: —</span>
     <span class="footer-sep">•</span>
     <a href="/docs" target="_blank" rel="noopener" class="footer-link">API Docs</a>
+    <span class="footer-sep">•</span>
+    <a href="/api/rag/stats" target="_blank" rel="noopener" class="footer-link">RAG Stats</a>
     <span class="footer-sep">•</span>
     <a href="https://github.com/cowrie/cowrie" target="_blank" rel="noopener" class="footer-link">Cowrie Project</a>
   </footer>
