@@ -51,6 +51,27 @@ OLLAMA_MODEL    = os.getenv("OLLAMA_MODEL", "tinyllama")
 CONTAINER_NAME  = os.getenv("CONTAINER_NAME", "cowrie_honeypot")
 RAG_DIR         = os.getenv("RAG_DIR", "./rag_db")
 
+# ─── Motores de IA cloud (prioridad: OpenAI → Groq → Ollama) ─────────────────
+OPENAI_API_KEY  = os.getenv("OPENAI_API_KEY", "")
+OPENAI_ENDPOINT = "https://api.openai.com/v1/chat/completions"
+OPENAI_MODEL    = os.getenv("OPENAI_MODEL", "gpt-4o-mini")   # barato y rápido
+
+GROQ_API_KEY    = os.getenv("GROQ_API_KEY", "")
+GROQ_ENDPOINT   = "https://api.groq.com/openai/v1/chat/completions"
+GROQ_MODEL      = os.getenv("GROQ_MODEL", "llama3-8b-8192")
+
+if OPENAI_API_KEY:
+    _AI_ENDPOINT, _AI_KEY, _AI_MODEL = OPENAI_ENDPOINT, OPENAI_API_KEY, OPENAI_MODEL
+    logger_mode = f"OpenAI ({OPENAI_MODEL})"
+elif GROQ_API_KEY:
+    _AI_ENDPOINT, _AI_KEY, _AI_MODEL = GROQ_ENDPOINT, GROQ_API_KEY, GROQ_MODEL
+    logger_mode = f"Groq ({GROQ_MODEL})"
+else:
+    _AI_ENDPOINT, _AI_KEY, _AI_MODEL = "", "", ""
+    logger_mode = "Ollama (local)"
+
+USE_CLOUD_AI = bool(OPENAI_API_KEY or GROQ_API_KEY)
+
 # ─── Instancia RAG global ─────────────────────────────────────────────────────
 rag = CowrieRAG(persist_dir=RAG_DIR)
 
@@ -99,8 +120,8 @@ app.add_middleware(
 # ─── Modelos ──────────────────────────────────────────────────────────────────
 class AnalyzeRequest(BaseModel):
     model:      Optional[str] = None
-    max_events: Optional[int] = 50
-    use_rag:    Optional[bool] = True   # Nuevo: controla si se usa el contexto RAG
+    max_events: Optional[int] = 15      # CPU-only: reducido de 50 → 15
+    use_rag:    Optional[bool] = True
 
 
 # ─── Helpers ──────────────────────────────────────────────────────────────────
@@ -304,51 +325,70 @@ async def analyze_with_ai(req: AnalyzeRequest):
         rag_context=rag_context,
     )
 
-    model   = req.model or OLLAMA_MODEL
-    payload = {
-        "model":   model,
-        "prompt":  prompt,
-        "stream":  False,
-        "options": {"temperature": 0.15, "num_predict": 1200},
-    }
+    # ─── Elegir motor: Groq (rápido/cloud) u Ollama (local) ──────────────────
+    mitre_summary = [{"id": t["id"], "name": t["name"]} for t in pre["mitre"]]
 
     try:
-        async with httpx.AsyncClient(timeout=180.0) as client:
-            response = await client.post(OLLAMA_ENDPOINT, json=payload)
-            response.raise_for_status()
-            data = response.json()
-
-            # Preparar resumen del pre-análisis para el frontend
-            mitre_summary = [
-                {"id": t["id"], "name": t["name"]}
-                for t in pre["mitre"]
-            ]
+        async with httpx.AsyncClient(timeout=60.0) as client:
+            if USE_GROQ:
+                # ── Groq: OpenAI-compatible, ~3-5 segundos ────────────────────
+                groq_payload = {
+                    "model":       GROQ_MODEL,
+                    "messages":    [{"role": "user", "content": prompt}],
+                    "max_tokens":  800,
+                    "temperature": 0.15,
+                }
+                response = await client.post(
+                    GROQ_ENDPOINT,
+                    json=groq_payload,
+                    headers={
+                        "Authorization": f"Bearer {GROQ_API_KEY}",
+                        "Content-Type":  "application/json",
+                    },
+                )
+                response.raise_for_status()
+                analysis_text = response.json()["choices"][0]["message"]["content"]
+                engine_used   = f"groq/{GROQ_MODEL}"
+            else:
+                # ── Ollama: local, sin API key ─────────────────────────────────
+                model   = req.model or OLLAMA_MODEL
+                payload = {
+                    "model":   model,
+                    "prompt":  prompt,
+                    "stream":  False,
+                    "options": {"temperature": 0.15, "num_predict": 450},
+                }
+                response = await client.post(OLLAMA_ENDPOINT, json=payload)
+                response.raise_for_status()
+                analysis_text = response.json().get("response", "")
+                engine_used   = f"ollama/{model}"
 
             return {
-                "model":            model,
-                "analysis":         data.get("response", ""),
+                "model":            engine_used,
+                "analysis":         analysis_text,
                 "events_analyzed":  len(critical),
                 "source":           "sample_data" if _is_using_sample() else "live",
                 "rag_context_used": rag_was_used,
                 "rag_indexed":      rag.indexed_count,
-                # Pre-análisis que el frontend puede usar
                 "pre_analysis": {
-                    "timing":         pre["timing"],
+                    "timing":          pre["timing"],
                     "credential_type": pre["credentials"].get("type", ""),
-                    "mitre_detected": mitre_summary,
-                    "success_logins": len(pre["success_logins"]),
-                    "commands_count": len(pre["commands"]),
-                    "unique_ips":     len(pre["unique_ips"]),
+                    "mitre_detected":  mitre_summary,
+                    "success_logins":  len(pre["success_logins"]),
+                    "commands_count":  len(pre["commands"]),
+                    "unique_ips":      len(pre["unique_ips"]),
                 },
             }
 
     except httpx.ConnectError:
-        raise HTTPException(
-            status_code=503,
-            detail="No se pudo conectar con Ollama. Ejecuta: `ollama serve`",
+        detail = (
+            "No se pudo conectar con Groq. Verifica tu GROQ_API_KEY."
+            if USE_GROQ else
+            "No se pudo conectar con Ollama. Ejecuta: `ollama serve`"
         )
+        raise HTTPException(status_code=503, detail=detail)
     except httpx.TimeoutException:
-        raise HTTPException(status_code=504, detail="Ollama tardó demasiado. Prueba con tinyllama.")
+        raise HTTPException(status_code=504, detail="El motor de IA tardó demasiado.")
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Error: {str(e)}")
 
