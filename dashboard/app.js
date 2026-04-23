@@ -26,7 +26,8 @@ let state = {
 // ─── DOM Refs ─────────────────────────────────────────────────────────────────
 const $ = (id) => document.getElementById(id);
 const el = {
-  status:        $("honeypot-status"),
+  status:        $("live-indicator"),
+  statusText:    $("status-text"),
   sourceLabel:   $("data-source-badge"),
   refreshSel:    $("refresh-interval-select"),
   refreshBtn:    $("refresh-btn"),
@@ -41,6 +42,8 @@ const el = {
   topIpsList:    $("top-ips-list"),
   topCmdsList:   $("top-cmds-list"),
   footerTs:      $("footer-timestamp"),
+  headerClock:   $("header-clock"),
+  loginAlert:    $("login-alert"),
   // Stats
   valTotal:      $("val-total"),
   valIps:        $("val-ips"),
@@ -71,20 +74,27 @@ async function loadStatus() {
     const running = data.container?.running;
     const sample  = data.log_source === "sample_data";
 
-    el.status.className = "status-badge " + (running ? "online" : "offline");
-    el.status.querySelector(".status-text").textContent =
-      running ? "Honeypot Activo" : "Contenedor Detenido";
+    // Live indicator
+    if (el.status) {
+      el.status.className = "live-indicator " + (running ? "online" : "offline");
+    }
+    if (el.statusText) {
+      el.statusText.textContent = running ? "Honeypot Activo" : "Contenedor Detenido";
+    }
 
-    el.sourceLabel.className = "data-source-badge " + (sample ? "sample" : "live");
-    el.sourceLabel.textContent = sample ? "📦 Datos de Demo" : "⚡ Live";
+    // Source badge
+    if (el.sourceLabel) {
+      el.sourceLabel.className = "source-badge " + (sample ? "sample" : "live");
+      el.sourceLabel.textContent = sample ? "DEMO" : "LIVE";
+    }
 
-    // RAG status desde el /api/status
+    // RAG status
     if (data.rag) {
       updateRagCard(data.rag.indexed_count, data.rag.available);
     }
   } catch {
-    el.status.className = "status-badge offline";
-    el.status.querySelector(".status-text").textContent = "API No Disponible";
+    if (el.status)     el.status.className = "live-indicator offline";
+    if (el.statusText) el.statusText.textContent = "API No Disponible";
   }
 }
 
@@ -139,6 +149,11 @@ async function loadStats() {
     renderTopCmds(d.top_commands || []);
     renderHourlyChart(d.hourly_activity || {});
     renderEventsChart(d.event_breakdown || {});
+
+    // Alerta visual en la tarjeta de logins
+    if (el.loginAlert) {
+      el.loginAlert.style.display = (d.logins_success ?? 0) > 0 ? "block" : "none";
+    }
   } catch (e) {
     console.error("Stats error:", e);
   }
@@ -162,20 +177,20 @@ function animateValue(el, target) {
 // ─── Top IPs (con clic → historial) ──────────────────────────────────────────
 function renderTopIPs(ips) {
   if (!ips.length) {
-    el.topIpsList.innerHTML = '<p style="padding:16px;color:var(--text-muted);font-size:.82rem;">Sin datos</p>';
+    el.topIpsList.innerHTML = '<p style="padding:16px;color:var(--t3);font-size:.8rem;">Sin datos</p>';
     return;
   }
   const max = ips[0]?.count || 1;
   el.topIpsList.innerHTML = ips.slice(0, 8).map((item, i) => `
-    <div class="ip-rank-item">
-      <span class="ip-rank-num">${i + 1}</span>
-      <span class="ip-rank-ip ip-link" onclick="showIPHistory('${escHtml(item.ip)}')"
+    <div class="rank-item">
+      <span class="rank-num">${i + 1}</span>
+      <span class="rank-ip" onclick="showIPHistory('${escHtml(item.ip)}')"
             title="Ver historial RAG de ${escHtml(item.ip)}">${escHtml(item.ip)}</span>
-      <div class="ip-rank-bar-wrap">
-        <div class="ip-rank-bar-bg">
-          <div class="ip-rank-bar" style="width:${Math.round((item.count / max) * 100)}%"></div>
+      <div class="rank-bar-wrap">
+        <div class="rank-bar-bg">
+          <div class="rank-bar" style="width:${Math.round((item.count / max) * 100)}%"></div>
         </div>
-        <span class="ip-rank-count">${item.count}</span>
+        <span class="rank-count">${item.count}</span>
       </div>
     </div>
   `).join("");
@@ -184,7 +199,7 @@ function renderTopIPs(ips) {
 // ─── Top Commands ─────────────────────────────────────────────────────────────
 function renderTopCmds(cmds) {
   if (!cmds.length) {
-    el.topCmdsList.innerHTML = '<p style="padding:16px;color:var(--text-muted);font-size:.82rem;">Sin comandos capturados</p>';
+    el.topCmdsList.innerHTML = '<p style="padding:16px;color:var(--t3);font-size:.8rem;">Sin comandos capturados</p>';
     return;
   }
   el.topCmdsList.innerHTML = cmds.slice(0, 8).map((item) => `
@@ -361,7 +376,7 @@ function eventPill(eventid) {
     "cowrie.session.params":  ['pill-default', '⚙',  'Params'],
   };
   const [cls, icon, label] = map[eventid] || ['pill-default', '·', eventid.replace("cowrie.", "")];
-  return `<span class="event-pill ${cls}">${escHtml(icon)} ${escHtml(label)}</span>`;
+  return `<span class="pill ${cls}">${escHtml(icon)} ${escHtml(label)}</span>`;
 }
 
 function getDetail(e) {
@@ -382,7 +397,7 @@ window.showIPHistory = async function(ip) {
 
   // Abrir drawer inmediatamente con spinner
   el.drawerTitle.textContent   = ip;
-  el.drawerContent.innerHTML   = `<div class="drawer-loading"><div class="loading-spinner"></div><span>Consultando memoria RAG...</span></div>`;
+  el.drawerContent.innerHTML   = `<div class="drawer-loading"><div class="spinner"></div><span>Consultando memoria RAG...</span></div>`;
   el.drawerOverlay.classList.add("open");
   el.ipDrawer.classList.add("open");
   document.body.style.overflow = "hidden";
@@ -513,7 +528,7 @@ async function runAnalysis() {
   const model  = el.aiModelSel.value;
 
   el.aiOutput.innerHTML = `<div class="ai-loading">
-    <div class="loading-spinner"></div>
+    <div class="spinner"></div>
     <span>Pre-analizando + consultando ${escHtml(model)}${useRag ? " + RAG" : ""}…</span>
   </div>`;
 
@@ -569,7 +584,7 @@ async function runAnalysis() {
           <span>${src}</span>
           ${ragUsed
             ? `<span class="rag-badge">🗄 RAG (${ragIndexed} indexados)</span>`
-            : `<span style="color:var(--text-muted);font-size:0.72rem">RAG off</span>`}
+            : `<span style="color:var(--t3);font-size:0.72rem">RAG off</span>`}
         </div>
         ${preBlock}
         <pre style="white-space:pre-wrap;font-family:inherit;line-height:1.75;margin-top:14px;">${escHtml(text)}</pre>
@@ -613,8 +628,19 @@ document.addEventListener("keydown", (e) => {
   if (e.key === "Escape" && state.drawerOpen) closeIPDrawer();
 });
 
-// ─── Init ─────────────────────────────────────────────────────────────────────
+// ─── Init ────────────────────────────────────────────────────────────────────
 async function init() {
+  // Reloj del header
+  const tick = () => {
+    if (el.headerClock) {
+      el.headerClock.textContent = new Date().toLocaleTimeString("es", {
+        hour: "2-digit", minute: "2-digit", second: "2-digit",
+      });
+    }
+  };
+  tick();
+  setInterval(tick, 1000);
+
   el.refreshBtn.addEventListener("click", refreshAll);
   el.refreshSel.addEventListener("change", () => setupAutoRefresh(el.refreshSel.value));
   el.analyzeBtn.addEventListener("click", runAnalysis);

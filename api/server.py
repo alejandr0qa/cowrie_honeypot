@@ -415,18 +415,34 @@ def search_similar(q: str = Query(..., description="Texto de búsqueda"), n: int
 
 
 # ─── Archivos estáticos del Dashboard ─────────────────────────────────────────
+# IMPORTANTE: este bloque DEBE ir al final. Los endpoints /api/* se registran
+# antes, por lo que no son interceptados por los mounts.
 _dashboard_path = Path("./dashboard")
-if _dashboard_path.exists():
-    app.mount("/static", StaticFiles(directory=str(_dashboard_path)), name="static")
 
+if _dashboard_path.exists():
+    # index.html en la raíz
     @app.get("/", response_class=FileResponse, include_in_schema=False)
     def serve_dashboard():
         return FileResponse(str(_dashboard_path / "index.html"))
+
+    # style.css y app.js serán pedidos con paths RELATIVOS desde index.html,
+    # así que deben estar disponibles en "/" (no bajo "/static/")
+    @app.get("/style.css", include_in_schema=False)
+    def serve_css():
+        return FileResponse(str(_dashboard_path / "style.css"), media_type="text/css")
+
+    @app.get("/app.js", include_in_schema=False)
+    def serve_js():
+        return FileResponse(str(_dashboard_path / "app.js"), media_type="application/javascript")
+
+    # Resto de assets estáticos opcionales
+    app.mount("/assets", StaticFiles(directory=str(_dashboard_path)), name="assets")
+
 else:
     @app.get("/", include_in_schema=False)
     def root():
         return {
-            "message":   "Cowrie Honeypot API v2.1",
+            "message":   "Cowrie Honeypot API v2.2",
             "docs":      "/docs",
             "endpoints": [
                 "/api/status", "/api/logs", "/api/stats", "/api/analyze",

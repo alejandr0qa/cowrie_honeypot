@@ -3,304 +3,284 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Cowrie Honeypot — Dashboard de Seguridad</title>
-  <meta name="description" content="Dashboard en tiempo real para monitorear y analizar ataques capturados por el honeypot SSH Cowrie con análisis de inteligencia artificial." />
+  <title>Cowrie Honeypot — Security Intelligence Dashboard</title>
+  <meta name="description" content="Dashboard en tiempo real para monitorear y analizar ataques capturados por el honeypot SSH Cowrie con análisis de inteligencia artificial y memoria RAG." />
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
-  <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet" />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet" />
   <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
   <link rel="stylesheet" href="style.css" />
 </head>
 <body>
 
-  <!-- ═══ HEADER ═══════════════════════════════════════════════════════════════ -->
-  <header class="header">
-    <div class="header-brand">
-      <div class="brand-icon">
-        <svg width="28" height="28" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
-          <path d="M12 2L2 7L12 12L22 7L12 2Z" stroke="currentColor" stroke-width="2" stroke-linejoin="round"/>
-          <path d="M2 17L12 22L22 17" stroke="currentColor" stroke-width="2" stroke-linejoin="round"/>
-          <path d="M2 12L12 17L22 12" stroke="currentColor" stroke-width="2" stroke-linejoin="round"/>
+  <!-- ═══ AMBIENT BACKGROUND ═════════════════════════════════════════════════ -->
+  <div class="bg-orbs" aria-hidden="true">
+    <div class="orb orb-1"></div>
+    <div class="orb orb-2"></div>
+    <div class="orb orb-3"></div>
+  </div>
+
+  <!-- ═══ HEADER ══════════════════════════════════════════════════════════════ -->
+  <header class="header" role="banner">
+    <div class="header-left">
+      <div class="brand-mark">
+        <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
+          <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/>
         </svg>
       </div>
       <div>
-        <h1 class="brand-title">Cowrie Honeypot</h1>
-        <span class="brand-sub">Security Intelligence Dashboard</span>
+        <h1 class="brand-name">COWRIE <span class="brand-accent">HONEYPOT</span></h1>
+        <p class="brand-tagline">Security Intelligence Dashboard</p>
       </div>
     </div>
+
+    <div class="header-center">
+      <div class="live-indicator" id="live-indicator">
+        <div class="live-dot"></div>
+        <span id="status-text">Conectando...</span>
+      </div>
+      <div id="data-source-badge" class="source-badge"></div>
+    </div>
+
     <div class="header-right">
-      <div class="status-badge" id="honeypot-status">
-        <span class="status-dot"></span>
-        <span class="status-text">Verificando...</span>
-      </div>
-      <div class="data-source-badge" id="data-source-badge"></div>
-      <div class="refresh-control">
-        <label for="refresh-interval-select">Auto-refresh</label>
-        <select id="refresh-interval-select">
-          <option value="0">Desactivado</option>
-          <option value="10">10s</option>
-          <option value="30" selected>30s</option>
-          <option value="60">1min</option>
-        </select>
-        <button id="refresh-btn" class="btn btn-ghost" title="Actualizar ahora">
-          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-            <polyline points="23 4 23 10 17 10"></polyline>
-            <path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"></path>
-          </svg>
-        </button>
-      </div>
+      <label class="control-label" for="refresh-interval-select">Refresh</label>
+      <select id="refresh-interval-select" class="control-select">
+        <option value="0">Manual</option>
+        <option value="15">15s</option>
+        <option value="30" selected>30s</option>
+        <option value="60">1 min</option>
+        <option value="300">5 min</option>
+      </select>
+      <button id="refresh-btn" class="btn btn-icon" title="Actualizar ahora" aria-label="Actualizar">
+        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <polyline points="23 4 23 10 17 10"/><polyline points="1 20 1 14 7 14"/>
+          <path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"/>
+        </svg>
+      </button>
+      <span class="header-time" id="header-clock"></span>
     </div>
   </header>
 
   <!-- ═══ MAIN ═════════════════════════════════════════════════════════════════ -->
-  <main class="main">
+  <main class="main" role="main">
 
-    <!-- ─── Stats Cards ─────────────────────────────────────────────────── -->
-    <section class="stats-grid" aria-label="Métricas generales">
+    <!-- ── Stats Grid ──────────────────────────────────────────────────────── -->
+    <section class="stats-grid" aria-label="Estadísticas del honeypot">
+
       <div class="stat-card" id="stat-total">
-        <div class="stat-icon stat-icon--blue">
-          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><path d="M12 8v4l3 3"/></svg>
-        </div>
-        <div class="stat-body">
+        <div class="stat-icon-wrap c-blue"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 12h-4l-3 9L9 3l-3 9H2"/></svg></div>
+        <div class="stat-info">
           <span class="stat-label">Total Eventos</span>
           <span class="stat-value" id="val-total">—</span>
         </div>
+        <div class="stat-trend" id="trend-total"></div>
       </div>
 
       <div class="stat-card" id="stat-ips">
-        <div class="stat-icon stat-icon--purple">
-          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><line x1="2" y1="12" x2="22" y2="12"/><path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"/></svg>
-        </div>
-        <div class="stat-body">
+        <div class="stat-icon-wrap c-purple"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><line x1="2" y1="12" x2="22" y2="12"/><path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"/></svg></div>
+        <div class="stat-info">
           <span class="stat-label">IPs Únicas</span>
           <span class="stat-value" id="val-ips">—</span>
         </div>
       </div>
 
-      <div class="stat-card stat-card--danger" id="stat-logins">
-        <div class="stat-icon stat-icon--red">
-          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>
-        </div>
-        <div class="stat-body">
+      <div class="stat-card stat-card--alert" id="stat-logins">
+        <div class="stat-icon-wrap c-red"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="11" width="18" height="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg></div>
+        <div class="stat-info">
           <span class="stat-label">Logins Exitosos</span>
-          <span class="stat-value stat-value--red" id="val-logins">—</span>
+          <span class="stat-value c-red" id="val-logins">—</span>
         </div>
+        <div class="stat-alert-indicator" id="login-alert"></div>
       </div>
 
       <div class="stat-card" id="stat-cmds">
-        <div class="stat-icon stat-icon--green">
-          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="4 17 10 11 4 5"/><line x1="12" y1="19" x2="20" y2="19"/></svg>
-        </div>
-        <div class="stat-body">
+        <div class="stat-icon-wrap c-green"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="4 17 10 11 4 5"/><line x1="12" y1="19" x2="20" y2="19"/></svg></div>
+        <div class="stat-info">
           <span class="stat-label">Comandos Capturados</span>
-          <span class="stat-value stat-value--green" id="val-cmds">—</span>
+          <span class="stat-value c-green" id="val-cmds">—</span>
         </div>
       </div>
 
       <div class="stat-card" id="stat-sessions">
-        <div class="stat-icon stat-icon--orange">
-          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>
-        </div>
-        <div class="stat-body">
+        <div class="stat-icon-wrap c-orange"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg></div>
+        <div class="stat-info">
           <span class="stat-label">Sesiones Únicas</span>
           <span class="stat-value" id="val-sessions">—</span>
         </div>
       </div>
 
       <div class="stat-card" id="stat-failed">
-        <div class="stat-icon stat-icon--yellow">
-          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>
-        </div>
-        <div class="stat-body">
+        <div class="stat-icon-wrap c-yellow"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg></div>
+        <div class="stat-info">
           <span class="stat-label">Intentos Fallidos</span>
-          <span class="stat-value stat-value--yellow" id="val-failed">—</span>
+          <span class="stat-value c-yellow" id="val-failed">—</span>
         </div>
       </div>
 
-      <!-- RAG Memory Card -->
-      <div class="stat-card stat-card--rag" id="stat-rag" title="Eventos indexados en la memoria histórica RAG (ChromaDB)">
-        <div class="stat-icon stat-icon--cyan">
-          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><ellipse cx="12" cy="5" rx="9" ry="3"/><path d="M21 12c0 1.66-4 3-9 3s-9-1.34-9-3"/><path d="M3 5v14c0 1.66 4 3 9 3s9-1.34 9-3V5"/></svg>
-        </div>
-        <div class="stat-body">
+      <div class="stat-card stat-card--rag" id="stat-rag" title="Eventos indexados en ChromaDB (RAG)">
+        <div class="stat-icon-wrap c-cyan"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><ellipse cx="12" cy="5" rx="9" ry="3"/><path d="M21 12c0 1.66-4 3-9 3s-9-1.34-9-3"/><path d="M3 5v14c0 1.66 4 3 9 3s9-1.34 9-3V5"/></svg></div>
+        <div class="stat-info">
           <span class="stat-label">Memoria RAG</span>
-          <span class="stat-value stat-value--cyan" id="val-rag">—</span>
-          <span class="stat-sublabel" id="rag-status-label">inicializando...</span>
+          <span class="stat-value c-cyan" id="val-rag">—</span>
+          <span class="stat-sub" id="rag-status-label">inicializando...</span>
         </div>
       </div>
+
     </section>
 
-    <!-- ─── Charts Row ──────────────────────────────────────────────────── -->
-    <section class="charts-row">
-      <div class="panel panel--chart">
+    <!-- ── Charts Row ──────────────────────────────────────────────────────── -->
+    <div class="charts-row">
+      <div class="glass-panel">
         <div class="panel-header">
-          <h2 class="panel-title">
-            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/></svg>
+          <div class="panel-title">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/></svg>
             Actividad por Hora
-          </h2>
+          </div>
         </div>
-        <div class="chart-wrapper">
-          <canvas id="chart-hourly" aria-label="Gráfica de actividad por hora"></canvas>
-        </div>
+        <div class="chart-area"><canvas id="chart-hourly"></canvas></div>
       </div>
 
-      <div class="panel panel--chart panel--chart-small">
+      <div class="glass-panel">
         <div class="panel-header">
-          <h2 class="panel-title">
-            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/></svg>
-            Tipos de Eventos
-          </h2>
+          <div class="panel-title">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
+            Tipos de Evento
+          </div>
         </div>
-        <div class="chart-wrapper">
-          <canvas id="chart-events" aria-label="Gráfica de tipos de eventos"></canvas>
-        </div>
+        <div class="chart-area chart-area--donut"><canvas id="chart-events"></canvas></div>
       </div>
-    </section>
+    </div>
 
-    <!-- ─── Content Row ─────────────────────────────────────────────────── -->
-    <section class="content-row">
+    <!-- ── Content Row ─────────────────────────────────────────────────────── -->
+    <div class="content-row">
 
       <!-- Top IPs -->
-      <div class="panel panel--topips">
+      <div class="glass-panel">
         <div class="panel-header">
-          <h2 class="panel-title">
-            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><line x1="2" y1="12" x2="22" y2="12"/></svg>
+          <div class="panel-title">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z"/><circle cx="12" cy="10" r="3"/></svg>
             Top IPs Atacantes
-          </h2>
+          </div>
+          <span class="panel-hint">clic → historial RAG</span>
         </div>
-        <div id="top-ips-list" class="ip-rank-list">
-          <div class="skeleton-loader"></div>
-        </div>
+        <div id="top-ips-list" class="rank-list"></div>
       </div>
 
       <!-- Top Commands -->
-      <div class="panel panel--topcmds">
+      <div class="glass-panel">
         <div class="panel-header">
-          <h2 class="panel-title">
-            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="4 17 10 11 4 5"/><line x1="12" y1="19" x2="20" y2="19"/></svg>
-            Comandos más Ejecutados
-          </h2>
+          <div class="panel-title">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="4 17 10 11 4 5"/><line x1="12" y1="19" x2="20" y2="19"/></svg>
+            Comandos Frecuentes
+          </div>
         </div>
-        <div id="top-cmds-list" class="cmd-list">
-          <div class="skeleton-loader"></div>
-        </div>
+        <div id="top-cmds-list" class="cmd-list"></div>
       </div>
 
-      <!-- AI Analysis Panel -->
-      <div class="panel panel--ai">
+      <!-- AI Panel -->
+      <div class="glass-panel panel--ai">
         <div class="panel-header">
-          <h2 class="panel-title">
-            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>
-            Análisis de IA
-          </h2>
+          <div class="panel-title">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9.663 17h4.673M12 3v1m6.364 1.636l-.707.707M21 12h-1M4 12H3m3.343-5.657l-.707-.707m2.828 9.9a5 5 0 1 1 7.072 0l-.548.547A3.374 3.374 0 0 0 14 18.469V19a2 2 0 1 1-4 0v-.531c0-.895-.356-1.754-.988-2.386l-.548-.547z"/></svg>
+            Análisis con IA
+          </div>
           <div class="ai-controls">
-            <select id="ai-model-select" class="model-select">
+            <select id="ai-model-select" class="control-select">
               <option value="tinyllama">TinyLlama</option>
               <option value="llama3">Llama 3</option>
               <option value="mistral">Mistral</option>
               <option value="gemma">Gemma</option>
             </select>
-            <label class="rag-toggle" title="Incluir memoria histórica RAG en el análisis">
+            <label class="rag-toggle" title="Usar memoria histórica RAG en el análisis" for="use-rag-toggle">
               <input type="checkbox" id="use-rag-toggle" checked />
-              <span class="rag-toggle-label">
-                <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><ellipse cx="12" cy="5" rx="9" ry="3"/><path d="M21 12c0 1.66-4 3-9 3s-9-1.34-9-3"/><path d="M3 5v14c0 1.66 4 3 9 3s9-1.34 9-3V5"/></svg>
+              <span class="toggle-track">
+                <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><ellipse cx="12" cy="5" rx="9" ry="3"/><path d="M21 12c0 1.66-4 3-9 3s-9-1.34-9-3"/><path d="M3 5v14c0 1.66 4 3 9 3s9-1.34 9-3V5"/></svg>
                 RAG
               </span>
             </label>
             <button id="analyze-btn" class="btn btn-primary">
-              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="5 3 19 12 5 21 5 3"/></svg>
-              Analizar con IA
+              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="5 3 19 12 5 21 5 3"/></svg>
+              Analizar
             </button>
           </div>
         </div>
         <div id="ai-output" class="ai-output">
-          <div class="ai-placeholder">
-            <svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>
-            <p>Presiona <strong>"Analizar con IA"</strong> para obtener un análisis de inteligencia de amenazas generado por el modelo local de Ollama.</p>
-            <p class="ai-note">Requiere que Ollama esté ejecutándose localmente.</p>
+          <div class="ai-empty">
+            <svg width="36" height="36" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1"><path d="M9.663 17h4.673M12 3v1m6.364 1.636l-.707.707M21 12h-1M4 12H3m3.343-5.657l-.707-.707m2.828 9.9a5 5 0 1 1 7.072 0l-.548.547A3.374 3.374 0 0 0 14 18.469V19a2 2 0 1 1-4 0v-.531c0-.895-.356-1.754-.988-2.386l-.548-.547z"/></svg>
+            <p><strong>Análisis de Threat Intelligence</strong></p>
+            <p class="ai-empty-sub">Presiona "Analizar" para obtener un informe de seguridad completo con mapeo MITRE ATT&CK, análisis de credenciales y recomendaciones.</p>
           </div>
         </div>
       </div>
 
-    </section>
+    </div>
 
-    <!-- ─── Events Table ────────────────────────────────────────────────── -->
-    <section class="panel panel--table">
+    <!-- ── Events Table ────────────────────────────────────────────────────── -->
+    <div class="glass-panel panel--full">
       <div class="panel-header">
-        <h2 class="panel-title">
-          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="8" y1="6" x2="21" y2="6"/><line x1="8" y1="12" x2="21" y2="12"/><line x1="8" y1="18" x2="21" y2="18"/><line x1="3" y1="6" x2="3.01" y2="6"/><line x1="3" y1="12" x2="3.01" y2="12"/><line x1="3" y1="18" x2="3.01" y2="18"/></svg>
-          Registro de Eventos en Tiempo Real
-        </h2>
+        <div class="panel-title">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="8" y1="6" x2="21" y2="6"/><line x1="8" y1="12" x2="21" y2="12"/><line x1="8" y1="18" x2="21" y2="18"/><line x1="3" y1="6" x2="3.01" y2="6"/><line x1="3" y1="12" x2="3.01" y2="12"/><line x1="3" y1="18" x2="3.01" y2="18"/></svg>
+          Log de Eventos
+          <span class="badge" id="event-count-badge">—</span>
+        </div>
         <div class="table-filters">
-          <input type="text" id="filter-ip" placeholder="Filtrar por IP..." class="filter-input" />
-          <select id="filter-event" class="filter-select">
+          <input id="filter-ip"    type="text"    placeholder="Filtrar por IP…"    class="filter-input" autocomplete="off" />
+          <select id="filter-event" class="control-select">
             <option value="">Todos los eventos</option>
             <option value="cowrie.session.connect">Conexión</option>
-            <option value="cowrie.login.success">Login Exitoso</option>
-            <option value="cowrie.login.failed">Login Fallido</option>
+            <option value="cowrie.login.success">Login OK</option>
+            <option value="cowrie.login.failed">Login Fail</option>
             <option value="cowrie.command.input">Comando</option>
-            <option value="cowrie.session.closed">Sesión Cerrada</option>
+            <option value="cowrie.session.closed">Sesión cerrada</option>
           </select>
-          <span class="event-count-badge" id="event-count-badge">0 eventos</span>
         </div>
       </div>
-      <div class="table-wrapper">
-        <table class="events-table" id="events-table">
+      <div class="table-scroll">
+        <table class="events-table" role="grid">
           <thead>
             <tr>
               <th>Timestamp</th>
-              <th>IP Origen <span class="th-hint">clic → historial</span></th>
-              <th>Tipo de Evento</th>
+              <th>IP Origen</th>
+              <th>Tipo</th>
               <th>Detalle</th>
               <th>Sesión</th>
             </tr>
           </thead>
           <tbody id="events-tbody">
-            <tr>
-              <td colspan="5" class="table-loading">
-                <div class="loading-spinner"></div>
-                <span>Cargando eventos...</span>
-              </td>
-            </tr>
+            <tr><td colspan="5" class="table-empty">Cargando eventos…</td></tr>
           </tbody>
         </table>
       </div>
-    </section>
+    </div>
 
   </main>
 
-  <!-- ═══ IP HISTORY DRAWER ══════════════════════════════════════════════════ -->
+  <!-- ═══ IP HISTORY DRAWER ════════════════════════════════════════════════════ -->
   <div id="ip-drawer-overlay" class="drawer-overlay" onclick="closeIPDrawer()"></div>
   <aside id="ip-drawer" class="ip-drawer" role="dialog" aria-label="Historial de IP" aria-modal="true">
     <div class="drawer-header">
       <div class="drawer-title-group">
-        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><line x1="2" y1="12" x2="22" y2="12"/><path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"/></svg>
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><line x1="2" y1="12" x2="22" y2="12"/><path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"/></svg>
         <h2 class="drawer-title" id="drawer-ip-title">—</h2>
       </div>
-      <button class="drawer-close" id="drawer-close-btn" onclick="closeIPDrawer()" aria-label="Cerrar">
-        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+      <button class="btn btn-icon" id="drawer-close-btn" onclick="closeIPDrawer()" aria-label="Cerrar">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
       </button>
     </div>
-
     <div id="drawer-content" class="drawer-content">
-      <div class="drawer-loading">
-        <div class="loading-spinner"></div>
-        <span>Consultando memoria RAG...</span>
-      </div>
+      <div class="drawer-loading"><div class="spinner"></div><span>Consultando memoria RAG…</span></div>
     </div>
   </aside>
 
   <!-- ═══ FOOTER ══════════════════════════════════════════════════════════════ -->
-  <footer class="footer">
-    <span>Cowrie Honeypot Dashboard v2.1 + RAG</span>
-    <span class="footer-sep">•</span>
-    <span id="footer-timestamp">Última actualización: —</span>
-    <span class="footer-sep">•</span>
-    <a href="/docs" target="_blank" rel="noopener" class="footer-link">API Docs</a>
-    <span class="footer-sep">•</span>
-    <a href="/api/rag/stats" target="_blank" rel="noopener" class="footer-link">RAG Stats</a>
-    <span class="footer-sep">•</span>
-    <a href="https://github.com/cowrie/cowrie" target="_blank" rel="noopener" class="footer-link">Cowrie Project</a>
+  <footer class="footer" role="contentinfo">
+    <span class="footer-brand">Cowrie Honeypot Dashboard <strong>v2.2</strong> + RAG + MITRE</span>
+    <div class="footer-links">
+      <span id="footer-timestamp">—</span>
+      <a href="/docs" target="_blank" rel="noopener">API Docs</a>
+      <a href="/api/rag/stats" target="_blank" rel="noopener">RAG Stats</a>
+      <a href="https://github.com/alejandr0qa/cowrie_honeypot" target="_blank" rel="noopener">GitHub</a>
+    </div>
   </footer>
 
   <script src="app.js"></script>
