@@ -1,10 +1,11 @@
 """
 ==============================================================================
-Cowrie Honeypot Dashboard — API Server v2.2
+Cowrie Honeypot Dashboard — API Server v2.3
 Cambios en esta versión:
   - Integración RAG (ChromaDB) para memoria histórica de ataques
   - Prompt Engineering avanzado (chain-of-thought + few-shot + MITRE ATT&CK)
   - Pre-análisis automático: timing, credenciales, técnicas MITRE detectadas
+  - MITRE D3FEND: endpoint de recomendaciones defensivas ATT&CK → D3FEND
   - Nuevo endpoint GET  /api/rag/stats
   - Nuevo endpoint POST /api/rag/index  (indexación manual)
   - Nuevo endpoint GET  /api/history/{ip}
@@ -36,6 +37,7 @@ from dotenv import load_dotenv
 sys.path.insert(0, os.path.dirname(__file__))
 from rag    import CowrieRAG                            # noqa: E402
 from prompt import pre_analyze, build_prompt            # noqa: E402
+from defend import build_defense_summary                # noqa: E402
 
 load_dotenv()
 logging.basicConfig(level=logging.INFO, format="%(levelname)s │ %(name)s │ %(message)s")
@@ -81,6 +83,7 @@ rag = CowrieRAG(persist_dir=RAG_DIR)
 async def lifespan(app: FastAPI):
     """Al arrancar: auto-indexar los logs actuales en ChromaDB."""
     logger.info("🚀 Cowrie Honeypot API iniciando...")
+    logger.info(f"Motor IA seleccionado: {logger_mode}")
     if rag.is_available:
         events = _load_logs()
         if events:
@@ -102,10 +105,10 @@ app = FastAPI(
     title="Cowrie Honeypot Dashboard API",
     description=(
         "API para visualizar y analizar eventos del honeypot Cowrie. "
-        "Incluye análisis con IA local (Ollama), memoria histórica RAG (ChromaDB) "
-        "y prompt engineering avanzado con MITRE ATT&CK."
+        "Incluye análisis con IA local/cloud, memoria histórica RAG (ChromaDB), "
+        "prompt engineering avanzado con MITRE ATT&CK y recomendaciones MITRE D3FEND."
     ),
-    version="2.2.0",
+    version="2.3.0",
     lifespan=lifespan,
 )
 
@@ -158,6 +161,18 @@ def _get_container_status() -> dict:
         return {"running": False, "status": "docker_unavailable"}
 
 
+def _critical_events(events: list[dict], limit: int = 300) -> list[dict]:
+    """Eventos útiles para análisis ATT&CK/D3FEND."""
+    critical = [
+        e for e in events
+        if e.get("eventid") in (
+            "cowrie.login.success", "cowrie.command.input", "cowrie.login.failed",
+            "cowrie.session.connect",
+        )
+    ]
+    return critical[:limit]
+
+
 def _index_in_background(events: list[dict]):
     """Función para indexar en segundo plano (no bloquea la respuesta HTTP)."""
     if rag.is_available and events:
@@ -178,6 +193,10 @@ def get_status():
         "rag": {
             "available":     rag.is_available,
             "indexed_count": rag.indexed_count,
+        },
+        "ai": {
+            "mode": logger_mode,
+            "cloud": USE_CLOUD_AI,
         },
         "timestamp": datetime.utcnow().isoformat() + "Z",
     }
@@ -260,6 +279,37 @@ def get_stats():
     }
 
 
+@app.get("/api/defense/recommendations", summary="Recomendaciones MITRE D3FEND desde técnicas ATT&CK detectadas")
+def get_defense_recommendations(limit: int = Query(default=300, ge=1, le=5000)):
+    """
+    Fases 1-3 D3FEND:
+    1. Reutiliza pre_analyze() para detectar ATT&CK en eventos Cowrie.
+    2. Convierte cada técnica ATT&CK a controles MITRE D3FEND-style.
+    3. Devuelve datos listos para el panel defensivo del dashboard.
+    """
+    events = _load_logs()
+    critical = _critical_events(events, limit)
+    if not critical:
+        raise HTTPException(status_code=404, detail="Sin eventos críticos para mapear defensas")
+
+    pre = pre_analyze(critical)
+    defense = build_defense_summary(pre)
+
+    return {
+        "source": "sample_data" if _is_using_sample() else "live",
+        "events_analyzed": len(critical),
+        "pre_analysis": {
+            "timing": pre["timing"],
+            "credential_type": pre["credentials"].get("type", ""),
+            "mitre_detected": [{"id": t["id"], "name": t["name"]} for t in pre["mitre"]],
+            "success_logins": len(pre["success_logins"]),
+            "commands_count": len(pre["commands"]),
+            "unique_ips": len(pre["unique_ips"]),
+        },
+        "defense": defense,
+    }
+
+
 @app.post("/api/analyze", summary="Análisis de IA con prompt avanzado + RAG + MITRE ATT&CK")
 async def analyze_with_ai(req: AnalyzeRequest):
     """
@@ -270,15 +320,7 @@ async def analyze_with_ai(req: AnalyzeRequest):
     4. Mapeo MITRE ATT&CK automático (20+ técnicas para SSH honeypot)
     """
     events = _load_logs()
-
-    critical = [
-        e for e in events
-        if e.get("eventid") in (
-            "cowrie.login.success", "cowrie.command.input", "cowrie.login.failed",
-            "cowrie.session.connect",
-        )
-    ]
-    critical = critical[: (req.max_events or 50)]
+    critical = _critical_events(events, req.max_events or 50)
 
     if not critical:
         raise HTTPException(status_code=404, detail="Sin eventos críticos para analizar")
@@ -325,30 +367,29 @@ async def analyze_with_ai(req: AnalyzeRequest):
         rag_context=rag_context,
     )
 
-    # ─── Elegir motor: Groq (rápido/cloud) u Ollama (local) ──────────────────
+    # ─── Elegir motor: OpenAI/Groq (cloud) u Ollama (local) ──────────────────
     mitre_summary = [{"id": t["id"], "name": t["name"]} for t in pre["mitre"]]
 
     try:
         async with httpx.AsyncClient(timeout=60.0) as client:
-            if USE_GROQ:
-                # ── Groq: OpenAI-compatible, ~3-5 segundos ────────────────────
-                groq_payload = {
-                    "model":       GROQ_MODEL,
+            if USE_CLOUD_AI:
+                cloud_payload = {
+                    "model":       _AI_MODEL,
                     "messages":    [{"role": "user", "content": prompt}],
                     "max_tokens":  800,
                     "temperature": 0.15,
                 }
                 response = await client.post(
-                    GROQ_ENDPOINT,
-                    json=groq_payload,
+                    _AI_ENDPOINT,
+                    json=cloud_payload,
                     headers={
-                        "Authorization": f"Bearer {GROQ_API_KEY}",
+                        "Authorization": f"Bearer {_AI_KEY}",
                         "Content-Type":  "application/json",
                     },
                 )
                 response.raise_for_status()
                 analysis_text = response.json()["choices"][0]["message"]["content"]
-                engine_used   = f"groq/{GROQ_MODEL}"
+                engine_used   = logger_mode.lower().replace(" ", "/")
             else:
                 # ── Ollama: local, sin API key ─────────────────────────────────
                 model   = req.model or OLLAMA_MODEL
@@ -382,8 +423,8 @@ async def analyze_with_ai(req: AnalyzeRequest):
 
     except httpx.ConnectError:
         detail = (
-            "No se pudo conectar con Groq. Verifica tu GROQ_API_KEY."
-            if USE_GROQ else
+            f"No se pudo conectar con el motor cloud: {logger_mode}. Verifica la API key."
+            if USE_CLOUD_AI else
             "No se pudo conectar con Ollama. Ejecuta: `ollama serve`"
         )
         raise HTTPException(status_code=503, detail=detail)
@@ -475,6 +516,14 @@ if _dashboard_path.exists():
     def serve_js():
         return FileResponse(str(_dashboard_path / "app.js"), media_type="application/javascript")
 
+    @app.get("/defend.css", include_in_schema=False)
+    def serve_defend_css():
+        return FileResponse(str(_dashboard_path / "defend.css"), media_type="text/css")
+
+    @app.get("/defend.js", include_in_schema=False)
+    def serve_defend_js():
+        return FileResponse(str(_dashboard_path / "defend.js"), media_type="application/javascript")
+
     # Resto de assets estáticos opcionales
     app.mount("/assets", StaticFiles(directory=str(_dashboard_path)), name="assets")
 
@@ -482,11 +531,12 @@ else:
     @app.get("/", include_in_schema=False)
     def root():
         return {
-            "message":   "Cowrie Honeypot API v2.2",
+            "message":   "Cowrie Honeypot API v2.3",
             "docs":      "/docs",
             "endpoints": [
                 "/api/status", "/api/logs", "/api/stats", "/api/analyze",
-                "/api/rag/stats", "/api/rag/index", "/api/history/{ip}", "/api/search",
+                "/api/defense/recommendations", "/api/rag/stats",
+                "/api/rag/index", "/api/history/{ip}", "/api/search",
             ],
         }
 
