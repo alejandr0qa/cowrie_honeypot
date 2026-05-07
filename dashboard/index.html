@@ -4,12 +4,13 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>Cowrie Honeypot — Security Intelligence Dashboard</title>
-  <meta name="description" content="Dashboard en tiempo real para monitorear y analizar ataques capturados por el honeypot SSH Cowrie con análisis de inteligencia artificial y memoria RAG." />
+  <meta name="description" content="Dashboard en tiempo real para monitorear y analizar ataques capturados por el honeypot SSH Cowrie con análisis de inteligencia artificial, memoria RAG y recomendaciones MITRE D3FEND." />
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet" />
   <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
   <link rel="stylesheet" href="style.css" />
+  <link rel="stylesheet" href="defend.css" />
 </head>
 <body>
 
@@ -274,15 +275,17 @@
 
   <!-- ═══ FOOTER ══════════════════════════════════════════════════════════════ -->
   <footer class="footer" role="contentinfo">
-    <span class="footer-brand">Cowrie Honeypot Dashboard <strong>v2.2</strong> + RAG + MITRE</span>
+    <span class="footer-brand">Cowrie Honeypot Dashboard <strong>v2.3</strong> + RAG + MITRE ATT&amp;CK + D3FEND</span>
     <div class="footer-links">
       <span id="footer-timestamp">—</span>
       <a href="/docs" target="_blank" rel="noopener">API Docs</a>
       <a href="/api/rag/stats" target="_blank" rel="noopener">RAG Stats</a>
+      <a href="/api/defense/recommendations" target="_blank" rel="noopener">D3FEND</a>
       <a href="https://github.com/alejandr0qa/cowrie_honeypot" target="_blank" rel="noopener">GitHub</a>
     </div>
   </footer>
 
   <script src="app.js"></script>
+  <script src="defend.js"></script>
 </body>
 </html>
